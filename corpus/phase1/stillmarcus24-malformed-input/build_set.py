@@ -1,4 +1,10 @@
-import json, tanilo_receipt_verify as t
+import json, os, tanilo_receipt_verify as t
+# Paths resolve from THIS FILE, not the cwd, so the script regenerates the same
+# three files byte-identically from any working directory. (Reported by
+# @TKCollective after an independent re-run: the previous version only resolved
+# from corpus/phase1/ and gave a "file not found" anywhere else.)
+HERE = os.path.dirname(os.path.abspath(__file__))
+def out(name): return os.path.join(HERE, name)
 VECTORS = {
  "env_not_object_string":      "not-an-envelope",
  "env_not_object_int":         12345,
@@ -28,13 +34,19 @@ results = {}
 for name, env in VECTORS.items():
     try:
         r = t.verify(env)
-        results[name] = {"outcome":"returned","status":r.status,"indeterminate_reason":r.indeterminate_reason,"raised":False}
+        # `errors` and `checks` are the verifier's own REASON — recorded as-run so the
+        # file shows WHICH check each vector trips, not merely that it returned a status.
+        # The conformance property is still status-only; a reason is diagnostic, never
+        # normative, so a differing reason is not a conformance failure.
+        results[name] = {"outcome":"returned","status":r.status,"indeterminate_reason":r.indeterminate_reason,
+                         "reason":list(r.errors),"checks":dict(r.checks),"raised":False}
     except Exception as e:
         results[name] = {"outcome":"raised","exception":type(e).__name__+": "+str(e)[:80],"raised":True}
 conforms = sum(1 for r in results.values() if not r["raised"])
-json.dump(VECTORS, open("stillmarcus24-malformed-input/vectors.json","w"), indent=1)
-json.dump(expected, open("stillmarcus24-malformed-input/expected.json","w"), indent=1)
+json.dump(VECTORS, open(out("vectors.json"),"w"), indent=1)
+json.dump(expected, open(out("expected.json"),"w"), indent=1)
 json.dump({"implementation":"tanilo-receipt-verify==0.1.1","note":"as-run, not edited to match; failures would be reported",
+           "reason_fields":"`reason` is the verifier's own errors list and `checks` its per-check map, both as-run. Diagnostic only: the conformance property in expected.json is status-only, so a different reason from another implementation is not a failure.",
            "conforming":conforms,"total":len(VECTORS),"results":results},
-          open("stillmarcus24-malformed-input/results-tanilo-0.1.1.json","w"), indent=1)
+          open(out("results-tanilo-0.1.1.json"),"w"), indent=1)
 print(f"packaged {len(VECTORS)} vectors | tanilo 0.1.1: {conforms}/{len(VECTORS)} return a status, {len(VECTORS)-conforms} raise")
